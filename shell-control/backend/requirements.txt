@@ -1,0 +1,6 @@
+openai
+rich
+asyncio
+fastapi
+uvicorn[standard]
+psutil
