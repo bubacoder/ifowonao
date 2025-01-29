@@ -1,0 +1,10 @@
+# Dpkg configuration to reduce detailed output (save tokens)
+
+# Disable the progress bar
+Dpkg::Progress-Fancy "0";
+
+# Hide the "Reading database" message
+Dpkg::Use-Pty "0";
+
+# Disable the usage of colors
+APT::Color "0";
