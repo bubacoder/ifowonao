@@ -11,7 +11,7 @@
             </ul>
           </template>
           <template v-else>
-            {{ value }}
+            <span v-text="value"></span>
           </template>
         </li>
       </ul>

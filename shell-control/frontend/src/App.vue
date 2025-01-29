@@ -48,7 +48,7 @@ import KnowledgeDisplay from './components/KnowledgeDisplay.vue';
 import TerminateButton from './components/TerminateButton.vue';
 
 interface EventData {
-  type: string;
+  type: 'PROMPT' | 'AI_RESPONSE' | 'COMMAND_RESULT' | 'INFO' | 'WARN' | 'ABORT' | 'COMPLETED';
   payload: any;
 }
 

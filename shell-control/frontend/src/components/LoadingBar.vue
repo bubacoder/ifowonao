@@ -19,7 +19,6 @@
       visible: {
         type: Boolean,
         required: true,
-        default: false,
       },
       color: {
         type: String,

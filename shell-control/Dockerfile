@@ -30,11 +30,22 @@ FROM worker-base AS webserver
 
 WORKDIR /work
 
+ARG PORT=8008
+ARG WORKERS=1
+
+# Reference: https://www.uvicorn.org/settings/
+ENV UVICORN_PORT=${PORT}
+ENV UVICORN_WORKERS=${WORKERS}
+
 # Copy backend files
 COPY backend/*.py backend/*.md ./
 
 # Copy frontend build from previous stage
 COPY --from=frontend /app/frontend/dist/ ./frontend/
 
-EXPOSE 80
-ENTRYPOINT ["uvicorn", "shellcontrol-backend:app", "--host", "0.0.0.0", "--port", "80"]
+# Set up health check
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl --fail http://localhost:${UVICORN_PORT}/health || exit 1
+
+EXPOSE ${PORT}
+ENTRYPOINT ["uvicorn", "shellcontrol-backend:app", "--host", "0.0.0.0"]

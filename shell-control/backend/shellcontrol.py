@@ -7,6 +7,7 @@ from enum import Enum
 from rich import print as rprint
 from traceback import format_exc
 import asyncio
+import tempfile
 import json
 import sys
 import os
@@ -16,7 +17,7 @@ import os
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL')
-DEBUG = True
+DEBUG = os.getenv('DEBUG', '0').lower() in ('true', '1')
 
 # Cost/million tokens in USD
 INPUT_COST_PER_MILLION = 0.4
@@ -41,16 +42,23 @@ class Event(Enum):
 class ShellAgent:
     def __init__(self):
         self.usage = {}
+        self.reset_usage()
+        self.client = OpenAI(
+            base_url=OPENAI_BASE_URL,
+            api_key=OPENAI_API_KEY,
+        )
 
     def emit(self, event_type: Event, payload: Any) -> dict:
         return {"type": event_type, "payload": payload}
 
     async def run_shell_command_async(self, command: str) -> dict:
         try:
-            script_filename = "command.sh"
-            with open(script_filename, "w") as script_file:
-                script_file.write("# Note: this file contains the last command executed by the LLM.\n")
-                script_file.write(command)
+            additional_error = None
+
+            with tempfile.NamedTemporaryFile(suffix=".sh", delete=False) as temp_file:
+                script_filename = temp_file.name
+                temp_file.write(b"# Note: this file contains the last command executed by the LLM.\n")
+                temp_file.write(command.encode())
 
             # Asynchronously create subprocess
             process = await asyncio.create_subprocess_exec(
@@ -58,8 +66,6 @@ class ShellAgent:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-
-            additional_error = None
 
             try:
                 # Wait for the process to complete with a timeout
@@ -69,6 +75,10 @@ class ShellAgent:
                 await process.wait()  # Wait for the process to clean up after being killed
                 additional_error = f"Error: The command execution exceeded the timeout of {COMMAND_TIMEOUT_SECONDS} seconds and was killed."
                 stdout, stderr = b"", b""  # Handle case where output is absent due to timeout
+            finally:
+                # Delete the temporary script file
+                if os.path.exists(script_filename):
+                    os.remove(script_filename)
 
             # Collect output and error
             output = stdout.decode().strip()
@@ -110,8 +120,8 @@ class ShellAgent:
 
         return output_section + error_section + exit_section
 
-    def query_llm(self, client: OpenAI, messages: list[Dict[str, Union[str, Any]]]) -> str:
-        response = client.chat.completions.create(
+    def query_llm(self, messages: list[Dict[str, Union[str, Any]]]) -> str:
+        response = self.client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=messages,
         )
@@ -150,15 +160,9 @@ class ShellAgent:
                 {"role": "user", "content": user_prompt},
             ]
 
-            # Initialize OpenAI client
-            client = OpenAI(
-                base_url=OPENAI_BASE_URL,
-                api_key=OPENAI_API_KEY,
-            )
-
             while True:
                 # Query the model
-                response_text = self.query_llm(client, messages)
+                response_text = self.query_llm(messages)
 
                 response_object = self.parse_response(response_text)
                 if response_object:
@@ -228,14 +232,14 @@ class ShellAgent:
         )
 
 
-def main(user_prompt: str) -> None:
+async def cli_main(user_prompt: str) -> None:
     agent = ShellAgent()
     try:
         rprint(f"Welcome to Linux shell agent powered by \"{OPENAI_MODEL}\"!")
         rprint(f"Request from the user: [bold]\"{user_prompt}\"[/bold]")
         rprint("[bold red]Press Ctrl+C to stop iteration at any step.[/bold red]")
 
-        for event in agent.process_user_request(user_prompt):
+        async for event in agent.process_user_request(user_prompt):
             if event["type"]:
                 match event["type"]:
                     case Event.AI_RESPONSE:
@@ -277,4 +281,4 @@ if __name__ == "__main__":
         sys.exit(1)
 
     user_prompt = sys.argv[1]
-    asyncio.run(main(user_prompt))
+    asyncio.run(cli_main(user_prompt))

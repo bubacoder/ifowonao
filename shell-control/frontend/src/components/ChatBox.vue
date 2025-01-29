@@ -6,8 +6,21 @@
 </template>
 
 <script lang="ts">
+
+import { type PropType } from 'vue';
+
+interface EventData {
+  type: 'PROMPT' | 'AI_RESPONSE' | 'COMMAND_RESULT' | 'INFO' | 'WARN' | 'ABORT' | 'COMPLETED';
+  payload: any;
+}
+
 export default {
-  props: ['event'],
+  props: {
+    event: {
+      type: Object as PropType<EventData>,
+      required: true
+    }
+  },
   computed: {
     boxClass() {
       switch (this.event.type) {

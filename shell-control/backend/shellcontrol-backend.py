@@ -5,7 +5,8 @@ from traceback import format_exc
 import psutil
 import os
 
-DEBUG = True
+
+DEBUG = os.getenv('DEBUG', '0').lower() in ('true', '1')
 
 app = FastAPI(title='shellcontrol.py')
 
@@ -42,8 +43,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except Exception as ex:
         exception_text = format_exc() if DEBUG else str(ex)
-        # await websocket.send_json({"type": "ABORT", "payload": exception_text})
         print(exception_text, flush=True)
+
+
+@app.get("/health")
+async def health_endpoint():
+    return {"status": "OK"}
 
 
 @app.post("/terminate")

@@ -22,10 +22,6 @@ input[type="checkbox"] {
   margin-right: 8px;
 }
 
-li {
-  margin-bottom: 5px;
-}
-
 #app {
   max-width: 100%;
   /* margin: 10px; */

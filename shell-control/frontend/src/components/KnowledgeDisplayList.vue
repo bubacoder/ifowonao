@@ -7,7 +7,9 @@
             <KnowledgeDisplayList :data="value" />
           </ul>
         </template>
-        <template v-else>{{ value }}</template>
+        <template v-else>
+          <span v-text="value"></span>
+        </template>
       </li>
     </ul>
 </template>

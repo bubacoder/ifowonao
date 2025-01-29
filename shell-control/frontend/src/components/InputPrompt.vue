@@ -4,6 +4,8 @@
       v-model="inputValue"
       type="text"
       placeholder="Enter your prompt..."
+      maxlength="10000"
+      @keyup.enter="submitPrompt"
     />
     <button @click="submitPrompt">Send</button>
   </div>
