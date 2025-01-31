@@ -11,8 +11,8 @@ COPY frontend/ ./
 RUN npm run build
 
 
-# --- Worker base with dependencies installed ---
-FROM python:3.13-bookworm AS worker-base
+# --- Base with dependencies installed ---
+FROM python:3.13-bookworm AS python-base
 
 WORKDIR /work
 
@@ -25,10 +25,14 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 
-# --- Backend (FastAPI) and frontend combined ---
-FROM worker-base AS webserver
+# --- Backend (FastAPI) ---
+FROM python-base AS agent
 
-WORKDIR /work
+# Copy backend files
+COPY backend/*.py backend/*.md ./
+
+# --- Backend (FastAPI) and frontend combined ---
+FROM agent AS agent-web
 
 ARG PORT=8008
 ARG WORKERS=1
@@ -36,9 +40,6 @@ ARG WORKERS=1
 # Reference: https://www.uvicorn.org/settings/
 ENV UVICORN_PORT=${PORT}
 ENV UVICORN_WORKERS=${WORKERS}
-
-# Copy backend files
-COPY backend/*.py backend/*.md ./
 
 # Copy frontend build from previous stage
 COPY --from=frontend /app/frontend/dist/ ./frontend/
@@ -48,4 +49,4 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl --fail http://localhost:${UVICORN_PORT}/health || exit 1
 
 EXPOSE ${PORT}
-ENTRYPOINT ["uvicorn", "shellcontrol-backend:app", "--host", "0.0.0.0"]
+ENTRYPOINT ["uvicorn", "shellcontrol-agent-web:app", "--host", "0.0.0.0"]
