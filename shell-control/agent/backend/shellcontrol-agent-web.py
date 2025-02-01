@@ -16,9 +16,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         # Receive user prompt from the frontend
-        # TODO await websocket.receive_json()
-        data = await websocket.receive_text()
-        prompt = data.strip()
+        user_event = await websocket.receive_json()
+        
+        if user_event["type"] != "prompt":
+            print(f"Unhandled user event type: {user_event["type"]}", flush=True)
+            return
+
+        prompt = user_event["payload"].strip()
         print(f"Received prompt: {prompt}", flush=True)
 
         agent = ShellAgent()
