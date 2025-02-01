@@ -181,7 +181,10 @@ export default {
           type: "PROMPT",
           payload: "💬 " + userPrompt,
         });
-        ws.send(userPrompt);
+        ws.send(JSON.stringify({
+          type: "prompt",
+          payload: userPrompt
+        }));
         taskStarted.value = true;
         taskRunning.value = true;
       } else {
