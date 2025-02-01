@@ -39,6 +39,7 @@
 
 <script lang="ts">
 import { ref, reactive, type Ref } from 'vue';
+import { type EventData } from './types/events';
 import ChatBox from './components/ChatBox.vue';
 import InputPrompt from './components/InputPrompt.vue';
 import PromptExamples from './components/PromptExamples.vue';
@@ -46,11 +47,6 @@ import TaskList from './components/TaskList.vue';
 import LoadingBar from './components/LoadingBar.vue';
 import KnowledgeDisplay from './components/KnowledgeDisplay.vue';
 import TerminateButton from './components/TerminateButton.vue';
-
-interface EventData {
-  type: 'PROMPT' | 'AI_RESPONSE' | 'COMMAND_RESULT' | 'INFO' | 'WARN' | 'ABORT' | 'COMPLETED';
-  payload: any;
-}
 
 function formatCommandResult(commandResult: any): string {
   const output = commandResult.output || "(The command produced no output)";
@@ -66,7 +62,7 @@ function formatCommandResult(commandResult: any): string {
   return formattedOutput;
 }
 
-function formatAIResponse(previous_action_results: string | null, next_action: string | null, command: string | null): string {
+function formatAIResponse(previous_action_results: string | null, next_action: string | null, tool_to_use: string | null): string {
   let responseFormatted = "";
 
   if (previous_action_results) {
@@ -75,8 +71,8 @@ function formatAIResponse(previous_action_results: string | null, next_action: s
   if (next_action) {
     responseFormatted += `⬇️ <b>Next action</b><br/>${next_action}<br/><br/>`;
   }
-  if (command) {
-    responseFormatted += `#️⃣ <b>Next command to run</b><br/>${command}<br/>`;
+  if (tool_to_use) {
+    responseFormatted += `#️⃣ <b>Next tool to run</b><br/>${JSON.stringify(tool_to_use, null, 2)}<br/>`;
   }
 
   return responseFormatted;
@@ -118,43 +114,53 @@ export default {
     ws.onmessage = (message: MessageEvent) => {
       const event = JSON.parse(message.data) as EventData;
 
-      if (event.type === "ABORT") {
-        taskRunning.value = false;
-      }
+      switch (event.type) {
+        case "AI_RESPONSE":
+          if (typeof event.payload === "object" && event.payload !== null) {
+            const { knowledge, open_tasks, completed_tasks, previous_action_results, next_action, tool_to_use } = event.payload;
 
-      // Check if it's an AI_RESPONSE message and process members separately
-      if (event.type === "AI_RESPONSE" && typeof event.payload === "object" && event.payload !== null) {
-        const { knowledge, open_tasks, completed_tasks, previous_action_results, next_action, command } = event.payload;
+            // Update task list and knowledge display
+            if (open_tasks) { tasks.openTasks = open_tasks; }
+            if (completed_tasks) { tasks.completedTasks = completed_tasks; }
+            if (knowledge) { currentKnowledge.value = knowledge; }
 
-        if (knowledge) {
-          currentKnowledge.value = knowledge
-        }
+            const response_formatted = formatAIResponse(previous_action_results, next_action, tool_to_use);
+            events.value.push({ type: "AI_RESPONSE", payload: response_formatted });
+          } else {
+            events.value.push(event);
+          }
+          break;
 
-        // Update task lists if available
-        if (open_tasks) {
-          tasks.openTasks = open_tasks;
-        }
-        if (completed_tasks) {
-          tasks.completedTasks = completed_tasks;
-        }
+        case "TOOL_SUCCESS":
+          if (event.payload.returncode !== undefined) {
+            const formattedResult = formatCommandResult(event.payload);
+            events.value.push({ type: "TOOL_SUCCESS", payload: formattedResult });
+          } else {
+            events.value.push(event);
+          }
+          break;
 
-        const response_formatted = formatAIResponse(previous_action_results, next_action, command);
-        events.value.push({ type: "AI_RESPONSE", payload: response_formatted });
-      }
-      else if (event.type === "COMMAND_RESULT") {
-        const formattedResult = formatCommandResult(event.payload);
-        events.value.push({ type: "COMMAND_RESULT", payload: formattedResult });
-      }
-      else if (event.type === "COMPLETED") {
-        const completed_message: string =
-          "✅ <b>The AI has completed the task.</b><br/><br/>" +
-          (event.payload !== null ? event.payload : "") +
-          "<br/><br/><i>Reload the page for a new task.</i>";
-        events.value.push({ type: "COMPLETED", payload: completed_message });
-        taskRunning.value = false;
-      }
-      else {
-        events.value.push(event);
+        case "TOOL_ERROR":
+          events.value.push(event);
+          break;
+
+        case "COMPLETED":
+          const completed_message: string =
+            "✅ <b>The AI has completed the task.</b><br/><br/>" +
+            (event.payload !== null ? event.payload : "") +
+            "<br/><br/><i>Reload the page for a new task.</i>";
+          events.value.push({ type: "COMPLETED", payload: completed_message });
+          taskRunning.value = false;
+          break;
+
+        case "ABORT":
+          events.value.push(event);
+          taskRunning.value = false;
+          break;
+
+        default:
+          events.value.push(event);
+          break;
       }
     };
 
