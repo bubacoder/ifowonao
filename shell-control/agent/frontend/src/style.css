@@ -49,7 +49,7 @@ input[type="checkbox"] {
   border-left: 4px solid #002289;
 }
 
-.chat-box.command-result {
+.chat-box.tool-success {
   border-left: 4px solid #0082ed;
 }
 

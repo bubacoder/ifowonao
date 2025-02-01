@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from shellcontrol import ShellAgent, Event
 from traceback import format_exc
+import asyncio
 import psutil
 import os
 
@@ -40,6 +41,8 @@ async def websocket_endpoint(websocket: WebSocket):
             }
             print(f"Sending: {event_type.name}", flush=True)
             await websocket.send_json(event_to_send)
+            # Small delay to allow the WebSocket to flush its buffer
+            await asyncio.sleep(0.1)
 
             if event_type == Event.COMPLETED:
                 await websocket.close()

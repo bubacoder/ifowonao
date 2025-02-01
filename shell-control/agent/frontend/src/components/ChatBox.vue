@@ -8,11 +8,7 @@
 <script lang="ts">
 
 import { type PropType } from 'vue';
-
-interface EventData {
-  type: 'PROMPT' | 'AI_RESPONSE' | 'COMMAND_RESULT' | 'INFO' | 'WARN' | 'ABORT' | 'COMPLETED';
-  payload: any;
-}
+import { type EventData } from '../types/events';
 
 export default {
   props: {
@@ -28,8 +24,10 @@ export default {
           return 'prompt';
         case 'AI_RESPONSE':
           return 'ai-response';
-        case 'COMMAND_RESULT':
-          return 'command-result';
+        case 'TOOL_SUCCESS':
+          return 'tool-success';
+        case 'TOOL_ERROR':
+          return 'warning';
         case 'INFO':
           return 'info';
         case 'WARN':

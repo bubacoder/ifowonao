@@ -5,12 +5,14 @@ from typing import Union, Dict, Any, Optional
 from openai import OpenAI
 from enum import Enum
 from rich import print as rprint
+from rich.pretty import pprint
 from traceback import format_exc
 import asyncio
 import tempfile
 import json
 import sys
 import os
+import re
 
 
 # Global Constants
@@ -32,11 +34,12 @@ COMMAND_TIMEOUT_SECONDS = 2 * 60
 
 class Event(Enum):
     AI_RESPONSE = 1
-    COMMAND_RESULT = 2
-    INFO = 3
-    WARN = 4
-    ABORT = 5
-    COMPLETED = 6
+    TOOL_SUCCESS = 2
+    TOOL_ERROR = 3
+    INFO = 10
+    WARN = 11
+    ABORT = 12
+    COMPLETED = 20
 
 
 class LLMClient:
@@ -89,7 +92,7 @@ class LLMClient:
 
     def get_usage_summary(self) -> str:
         return (
-            f"Token usage: {self.usage['prompt_tokens']} input + {self.usage['completion_tokens']} output = "
+            f"Tokens: {self.usage['prompt_tokens']} sent + {self.usage['completion_tokens']} received = "
             f"{self.usage['prompt_tokens'] + self.usage['completion_tokens']} total\n"
             f"Total cost: USD {self.usage['total_cost']:.4f} / {NATIVE_CURRENCY} {self.usage['total_cost_native']:.4f}"
         )
@@ -100,18 +103,20 @@ class LLMClient:
 
 class ShellAgent:
     def __init__(self):
-        self.client : LLMClient = None
+        self.client: LLMClient = None
 
-    def emit(self, event_type: Event, payload: Any) -> dict:
+    def event(self, event_type: Event, payload: Any) -> dict:
         return {"type": event_type, "payload": payload}
 
-    async def run_shell_command_async(self, command: str) -> dict:
+    async def run_shell_command_async(self, command: Union[str, dict]) -> dict:
         try:
             additional_error = None
 
             with tempfile.NamedTemporaryFile(suffix=".sh", delete=False) as temp_file:
                 script_filename = temp_file.name
                 temp_file.write(b"# Note: this file contains the command to be executed by the LLM.\n")
+                if isinstance(command, dict):
+                    command = command.get("parameters", {}).get("command", "")
                 temp_file.write(command.encode())
 
             # Asynchronously create subprocess
@@ -124,19 +129,22 @@ class ShellAgent:
             try:
                 # Wait for the process to complete with a timeout
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=COMMAND_TIMEOUT_SECONDS)
+                # Collect output and error
+                output = stdout.decode().strip()
+                error = stderr.decode().strip()
             except asyncio.TimeoutError:
                 process.kill()  # Kill the process if it exceeds the timeout
                 await process.wait()  # Wait for the process to clean up after being killed
                 additional_error = f"Error: The command execution exceeded the timeout of {COMMAND_TIMEOUT_SECONDS} seconds and was killed."
-                stdout, stderr = b"", b""  # Handle case where output is absent due to timeout
+                stdout, stderr = "", ""  # Handle case where output is absent due to timeout
             finally:
                 # Delete the temporary script file
                 if os.path.exists(script_filename):
                     os.remove(script_filename)
 
-            # Collect output and error
-            output = stdout.decode().strip()
-            error = stderr.decode().strip()
+            # Clean up error message by removing temporary file reference
+            if error:
+                error = re.sub(r'^/tmp/[^:]+\.sh: line \d+: ', 'bash: ', error)
 
             return {
                 "output": output,
@@ -182,8 +190,8 @@ class ShellAgent:
             pass
         return None
 
-    def get_command(self, response_object: Optional[Dict]) -> Optional[str]:
-        return response_object.get("command") if response_object else None
+    def get_tool_call(self, response_object: Optional[Dict]) -> dict:
+        return response_object.get("tool_to_use") if response_object else {}
 
     def get_usage_summary(self) -> str:
         return self.client.get_usage_summary()
@@ -197,7 +205,7 @@ class ShellAgent:
                 base_url=OPENAI_BASE_URL,
                 api_key=OPENAI_API_KEY,
                 model=OPENAI_MODEL,
-                prompt_filename='system-prompt.md')
+                prompt_filename='agent-system-prompt.md')
             
             self.client.append_user_message(user_prompt)
 
@@ -206,35 +214,100 @@ class ShellAgent:
 
                 response_object = self.parse_response(response_text)
                 if response_object:
-                    yield self.emit(Event.AI_RESPONSE, response_object)
+                    yield self.event(Event.AI_RESPONSE, response_object)
                 else:
-                    yield self.emit(Event.AI_RESPONSE, response_text)
-                    yield self.emit(Event.WARN, "Invalid JSON data provided. Trying again.")
+                    yield self.event(Event.AI_RESPONSE, response_text)
+                    yield self.event(Event.WARN, "Invalid JSON data provided. Trying again.")
                     continue
 
-                command = self.get_command(response_object)
-                if command is None:
-                    yield self.emit(Event.ABORT, "No command provided. Exiting.")
-                    break
-                if command == "COMPLETED":
-                    yield self.emit(Event.COMPLETED, None)
+                tool_call = self.get_tool_call(response_object)
+                if not tool_call:
+                    yield self.event(Event.ABORT, "No tool selection provided. Exiting.")
                     break
 
+                # Log the assistant's response first - common for all tools
                 self.client.append_assistant_message(response_text)
 
-                # Run the shell command asynchronously
-                command_result = await self.run_shell_command_async(command)
-                yield self.emit(Event.COMMAND_RESULT, command_result)
+                # Dispatch to specific handler
+                tool_name = tool_call.get("name")
+                parameters = tool_call.get("parameters", {})
+                
+                match tool_name:
+                    case "execute_shell_command":
+                        tool_event = await self.handle_execute_shell_command(parameters)
+                        match tool_event["type"]:
+                            case Event.TOOL_SUCCESS:
+                                command_result_formatted = self.format_command_result(tool_event["payload"])
+                                self.client.append_user_message(command_result_formatted)
+                                yield tool_event
+                            case Event.TOOL_ERROR:
+                                self.client.append_user_message(tool_event["payload"])
+                                yield tool_event
 
-                self.client.append_user_message(self.format_command_result(command_result))
+                    case "read_file":
+                        tool_event = self.handle_read_file(parameters)
+                        self.client.append_user_message(tool_event["payload"])
+                        yield tool_event
 
+                    case "write_file":
+                        tool_event = self.handle_write_file(parameters)
+                        self.client.append_user_message(tool_event["payload"])
+                        yield tool_event
+
+                    case "task_complete":
+                        summary = parameters.get("summary", "")
+                        yield self.event(Event.COMPLETED, summary)
+                        break
+
+                    case _:
+                        yield self.event(Event.ABORT, f"Unknown tool selected: {tool_name}. Exiting.")
+                        break
+
+                # Cost check after handling each tool
                 if ABORT_ON_TOTAL_COST > 0 and self.client.get_total_cost() > ABORT_ON_TOTAL_COST:
-                    yield self.emit(Event.ABORT, f"Total cost is exceeding the limit (USD ${ABORT_ON_TOTAL_COST}). Exiting.")
+                    yield self.event(Event.ABORT, f"Total cost is exceeding the limit (${ABORT_ON_TOTAL_COST}). Exiting.")
                     break
 
         except Exception as ex:
             exception_text = format_exc() if DEBUG else str(ex)
-            yield self.emit(Event.ABORT, exception_text)
+            yield self.event(Event.ABORT, exception_text)
+
+    async def handle_execute_shell_command(self, parameters: dict):
+        command = parameters.get("command")
+        if not command:
+            return self.event(Event.TOOL_ERROR, "Missing command parameter for execute_shell_command")
+
+        command_result = await self.run_shell_command_async(command)
+        return self.event(Event.TOOL_SUCCESS, command_result)
+
+    def handle_read_file(self, parameters: dict):
+        filename = parameters.get("filename")
+        if not filename:
+            return self.event(Event.TOOL_ERROR, "Missing filename parameter for read_file")
+
+        try:
+            with open(filename, "r") as f:
+                content = f.read()
+            return self.event(Event.TOOL_SUCCESS, f"Successfully read {filename}:\n{content}")
+        except Exception as e:
+            return self.event(Event.TOOL_ERROR, f"Read error: {str(e)}")
+
+    def handle_write_file(self, parameters: dict):
+        filename = parameters.get("filename")
+        content = parameters.get("content", "")
+        if not filename:
+            return self.event(Event.TOOL_ERROR, "Missing filename parameter for write_file")
+
+        try:
+            # Ensure directory exists
+            directory = os.path.dirname(filename)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            with open(filename, "w") as f:
+                f.write(content)
+            return self.event(Event.TOOL_SUCCESS, f"Successfully wrote to {filename}")
+        except Exception as e:
+            return self.event(Event.TOOL_ERROR, f"Write error: {str(e)}")
 
 
 async def cli_main(user_prompt: str) -> None:
@@ -249,10 +322,16 @@ async def cli_main(user_prompt: str) -> None:
                 match event["type"]:
                     case Event.AI_RESPONSE:
                         rprint("\n[bold]=== AI Response ===[/bold]")
-                        rprint(event["payload"])
-                    case Event.COMMAND_RESULT:
-                        rprint("\n[bold]=== Shell Output ===[/bold]")
-                        print(agent.format_command_result(event["payload"]))
+                        pprint(event["payload"], expand_all=True)
+                    case Event.TOOL_SUCCESS:
+                        rprint("\n[bold]=== Tool Output ===[/bold]")
+                        if event["payload"]["returncode"] != None:
+                            print(agent.format_command_result(event["payload"]))
+                        else:
+                            print(event["payload"])
+                    case Event.TOOL_ERROR:
+                        rprint("\n[bold]=== Tool Output - ERROR ===[/bold]")
+                        print(event["payload"])
                     case Event.INFO:
                         rprint(f"\n[bold]==> {event['payload']}")
                     case Event.WARN:
@@ -262,7 +341,7 @@ async def cli_main(user_prompt: str) -> None:
                     case Event.COMPLETED:
                         rprint("\n[bold]==> The AI has completed the task. Exiting.")
                     case _:
-                        rprint(f"\n[bold]==> WARNING UNHANDLED EVENT: {event}")
+                        rprint(f"\n[bold]==> WARNING: Unhandled event: {event}")
             else:
                 rprint(f"\n[bold]==> UNABLE TO PARSE EVENT: {event}")
 

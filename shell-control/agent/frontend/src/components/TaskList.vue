@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h3>Tasks</h3>
+    <h3>Plan</h3>
     <div>
     <ul>
       <li v-for="(task, index) in completedTasks" :key="'completed-task-' + index">
