@@ -39,14 +39,68 @@ class Event(Enum):
     COMPLETED = 6
 
 
-class ShellAgent:
-    def __init__(self):
+class LLMClient:
+    def __init__(self, base_url: str, api_key: str, model: str, prompt_filename: str = 'system-prompt.md'):
+        self.model = model
         self.usage = {}
         self.reset_usage()
-        self.client = OpenAI(
-            base_url=OPENAI_BASE_URL,
-            api_key=OPENAI_API_KEY,
+
+        with open(prompt_filename, 'r') as file:
+            system_prompt = file.read()
+
+        self.messages: list[Dict[str, Union[str, Any]]] = []
+        self.append_message('system', system_prompt)
+
+        self.client = OpenAI(base_url=base_url, api_key=api_key)
+
+    def query(self) -> str:
+        response = self.client.chat.completions.create(model=self.model, messages=self.messages)
+        self.update_usage_stats(response.usage.prompt_tokens, response.usage.completion_tokens)
+        return response.choices[0].message.content.strip()
+
+    def append_message(self, role: str, message: str) -> None:
+        self.messages.append({'role': role, 'content': message})
+
+    def append_user_message(self, message: str) -> None:
+        self.append_message('user', message)
+
+    def append_assistant_message(self, message: str) -> None:
+        self.append_message('assistant', message)
+
+    def update_usage_stats(self, add_prompt_tokens: int = 0, add_completion_tokens: int = 0) -> None:
+        # Add tokens to total
+        self.usage["prompt_tokens"] += add_prompt_tokens
+        self.usage["completion_tokens"] += add_completion_tokens
+        # Calculate cost
+        self.usage["prompt_cost"] = self.usage["prompt_tokens"] / 1_000_000 * INPUT_COST_PER_MILLION
+        self.usage["completion_cost"] = self.usage["completion_tokens"] / 1_000_000 * OUTPUT_COST_PER_MILLION
+        self.usage["total_cost"] = self.usage["prompt_cost"] + self.usage["completion_cost"]
+        self.usage["total_cost_native"] = self.usage["total_cost"] * NATIVE_CURRENCY_PER_USD
+
+    def reset_usage(self):
+        self.usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "prompt_cost": 0.0,
+            "completion_cost": 0.0,
+            "total_cost": 0.0,
+            "total_cost_native": 0.0
+        }
+
+    def get_usage_summary(self) -> str:
+        return (
+            f"Token usage: {self.usage['prompt_tokens']} input + {self.usage['completion_tokens']} output = "
+            f"{self.usage['prompt_tokens'] + self.usage['completion_tokens']} total\n"
+            f"Total cost: USD {self.usage['total_cost']:.4f} / {NATIVE_CURRENCY} {self.usage['total_cost_native']:.4f}"
         )
+
+    def get_total_cost(self) -> float:
+        return self.usage["total_cost"]
+
+
+class ShellAgent:
+    def __init__(self):
+        self.client : LLMClient = None
 
     def emit(self, event_type: Event, payload: Any) -> dict:
         return {"type": event_type, "payload": payload}
@@ -57,7 +111,7 @@ class ShellAgent:
 
             with tempfile.NamedTemporaryFile(suffix=".sh", delete=False) as temp_file:
                 script_filename = temp_file.name
-                temp_file.write(b"# Note: this file contains the last command executed by the LLM.\n")
+                temp_file.write(b"# Note: this file contains the command to be executed by the LLM.\n")
                 temp_file.write(command.encode())
 
             # Asynchronously create subprocess
@@ -120,19 +174,6 @@ class ShellAgent:
 
         return output_section + error_section + exit_section
 
-    def query_llm(self, messages: list[Dict[str, Union[str, Any]]]) -> str:
-        response = self.client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-        )
-
-        self.update_usage_stats(
-            response.usage.prompt_tokens,
-            response.usage.completion_tokens
-        )
-
-        return response.choices[0].message.content.strip()
-
     def parse_response(self, response: Union[str, Dict]) -> Optional[Dict]:
         try:
             if isinstance(response, str):
@@ -144,25 +185,24 @@ class ShellAgent:
     def get_command(self, response_object: Optional[Dict]) -> Optional[str]:
         return response_object.get("command") if response_object else None
 
+    def get_usage_summary(self) -> str:
+        return self.client.get_usage_summary()
+
     async def process_user_request(self, user_prompt: str):
         """
         Main entry point for processing a user's prompt. Outputs results as events for streaming.
         """
         try:
-            # Read the system prompt
-            with open('system-prompt.md', 'r') as file:
-                system_prompt = file.read()
-
-            self.reset_usage()
-
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
+            self.client = LLMClient(
+                base_url=OPENAI_BASE_URL,
+                api_key=OPENAI_API_KEY,
+                model=OPENAI_MODEL,
+                prompt_filename='system-prompt.md')
+            
+            self.client.append_user_message(user_prompt)
 
             while True:
-                # Query the model
-                response_text = self.query_llm(messages)
+                response_text = self.client.query()
 
                 response_object = self.parse_response(response_text)
                 if response_object:
@@ -180,56 +220,21 @@ class ShellAgent:
                     yield self.emit(Event.COMPLETED, None)
                     break
 
-                # Append assistant's response to the conversation
-                messages.append({
-                    "role": "assistant",
-                    "content": response_text
-                })
+                self.client.append_assistant_message(response_text)
 
                 # Run the shell command asynchronously
                 command_result = await self.run_shell_command_async(command)
                 yield self.emit(Event.COMMAND_RESULT, command_result)
 
-                # Append output to conversation
-                messages.append({
-                    "role": "user",
-                    "content": self.format_command_result(command_result)
-                })
+                self.client.append_user_message(self.format_command_result(command_result))
 
-                if ABORT_ON_TOTAL_COST > 0 and self.usage["total_cost"] > ABORT_ON_TOTAL_COST:
+                if ABORT_ON_TOTAL_COST > 0 and self.client.get_total_cost() > ABORT_ON_TOTAL_COST:
                     yield self.emit(Event.ABORT, f"Total cost is exceeding the limit (USD ${ABORT_ON_TOTAL_COST}). Exiting.")
                     break
 
         except Exception as ex:
             exception_text = format_exc() if DEBUG else str(ex)
             yield self.emit(Event.ABORT, exception_text)
-
-    def update_usage_stats(self, add_prompt_tokens: int = 0, add_completion_tokens: int = 0) -> None:
-        # Add tokens to total
-        self.usage["prompt_tokens"] += add_prompt_tokens
-        self.usage["completion_tokens"] += add_completion_tokens
-        # Calculate cost
-        self.usage["prompt_cost"] = self.usage["prompt_tokens"] / 1_000_000 * INPUT_COST_PER_MILLION
-        self.usage["completion_cost"] = self.usage["completion_tokens"] / 1_000_000 * OUTPUT_COST_PER_MILLION
-        self.usage["total_cost"] = self.usage["prompt_cost"] + self.usage["completion_cost"]
-        self.usage["total_cost_native"] = self.usage["total_cost"] * NATIVE_CURRENCY_PER_USD
-
-    def reset_usage(self):
-        self.usage = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "prompt_cost": 0.0,
-            "completion_cost": 0.0,
-            "total_cost": 0.0,
-            "total_cost_native": 0.0
-        }
-
-    def get_usage_summary(self) -> str:
-        return (
-            f"Token usage: {self.usage['prompt_tokens']} input + {self.usage['completion_tokens']} output = "
-            f"{self.usage['prompt_tokens'] + self.usage['completion_tokens']} total\n"
-            f"Total cost: USD {self.usage['total_cost']:.4f} / {NATIVE_CURRENCY} {self.usage['total_cost_native']:.4f}"
-        )
 
 
 async def cli_main(user_prompt: str) -> None:
