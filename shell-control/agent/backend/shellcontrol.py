@@ -7,6 +7,8 @@ from enum import Enum
 from rich import print as rprint
 from rich.pretty import pprint
 from traceback import format_exc
+from datetime import datetime
+import pathlib
 import asyncio
 import tempfile
 import json
@@ -26,6 +28,9 @@ INPUT_COST_PER_MILLION = 0.4
 OUTPUT_COST_PER_MILLION = 0.4
 NATIVE_CURRENCY = "HUF"
 NATIVE_CURRENCY_PER_USD = 404
+
+# Default log directory (can be overridden)
+DEFAULT_LOG_DIR = "logs"
 
 # Limits
 ABORT_ON_TOTAL_COST = 0.5
@@ -99,6 +104,39 @@ class LLMClient:
 
     def get_total_cost(self) -> float:
         return self.usage["total_cost"]
+
+    def save_messages(self, log_dir: str = DEFAULT_LOG_DIR, conclusion: str = None, user_prompt: str = None) -> str:
+        """
+        Save conversation messages to a JSON file in the specified directory.
+        Args:
+            log_dir: Directory to save the log file
+            conclusion: How the conversation ended (e.g. "completed", "failed", "aborted_due_cost")
+            user_prompt: The original user prompt that started the conversation
+        Returns the path to the saved file.
+        """
+        # Ensure log directory exists
+        log_path = pathlib.Path(log_dir)
+        log_path.mkdir(parents=True, exist_ok=True)
+        
+        # Create filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = log_path / f"conversation_{timestamp}.json"
+        
+        # Prepare log data
+        log_data = {
+            "timestamp": datetime.now().isoformat(),
+            "user_prompt": user_prompt,
+            "conclusion": conclusion,
+            "model": self.model,
+            "messages": self.messages,
+            "usage": self.usage,
+        }
+        
+        # Write to file with nice formatting
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
+        
+        return str(filename)
 
 
 class ShellAgent:
@@ -256,15 +294,21 @@ class ShellAgent:
 
                     case "task_complete":
                         summary = parameters.get("summary", "")
+                        log_file = self.client.save_messages(conclusion="completed", user_prompt=user_prompt)
+                        yield self.event(Event.INFO, f"Conversation saved to: {log_file}")
                         yield self.event(Event.COMPLETED, summary)
                         break
 
                     case _:
+                        log_file = self.client.save_messages(conclusion="failed", user_prompt=user_prompt)
+                        yield self.event(Event.INFO, f"Conversation saved to: {log_file}")
                         yield self.event(Event.ABORT, f"Unknown tool selected: {tool_name}. Exiting.")
                         break
 
                 # Cost check after handling each tool
                 if ABORT_ON_TOTAL_COST > 0 and self.client.get_total_cost() > ABORT_ON_TOTAL_COST:
+                    log_file = self.client.save_messages(conclusion="aborted_due_cost", user_prompt=user_prompt)
+                    yield self.event(Event.INFO, f"Conversation saved to: {log_file}")
                     yield self.event(Event.ABORT, f"Total cost is exceeding the limit (${ABORT_ON_TOTAL_COST}). Exiting.")
                     break
 
