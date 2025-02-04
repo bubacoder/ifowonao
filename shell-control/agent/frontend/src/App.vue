@@ -72,7 +72,7 @@ function formatAIResponse(previous_action_results: string | null, next_action: s
     responseFormatted += `⬇️ <b>Next action</b><br/>${next_action}<br/><br/>`;
   }
   if (tool_to_use) {
-    responseFormatted += `#️⃣ <b>Next tool to run</b><br/>${JSON.stringify(tool_to_use, null, 2)}<br/>`;
+    responseFormatted += `#️⃣ <b>Tool to run</b><br/>${JSON.stringify(tool_to_use, null, 2)}<br/>`;
   }
 
   return responseFormatted;

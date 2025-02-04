@@ -14,7 +14,8 @@ build() {
 }
 
 prepare_workdir() {
-    readonly WORK_DIR="work/run-$(date +%s)"
+    WORK_DIR="work/run-$(date +%s)"
+    readonly WORK_DIR
     mkdir -p "${WORK_DIR}"
 
     cp ./agent/backend/*.md "${WORK_DIR}/"
