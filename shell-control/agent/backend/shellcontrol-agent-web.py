@@ -1,6 +1,7 @@
+from typing import Dict
+from shellcontrol import ShellAgent, Event
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
-from shellcontrol import ShellAgent, Event
 from traceback import format_exc
 import asyncio
 import psutil
@@ -13,7 +14,7 @@ app = FastAPI(title='shellcontrol.py')
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     try:
         # Receive user prompt from the frontend
@@ -54,12 +55,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.get("/health")
-async def health_endpoint():
+async def health_endpoint() -> Dict[str, str]:
     return {"status": "OK"}
 
 
 @app.post("/terminate")
-def terminate_endpoint():
+def terminate_endpoint() -> Dict[str, str]:
     """
     Forcefully terminates all child processes and the server itself.
     """
