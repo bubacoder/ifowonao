@@ -128,6 +128,7 @@ async def cli_main(user_prompt: str) -> None:
     try:
         rprint(f"Welcome to Linux shell agent powered by \"{OPENAI_MODEL}\"!")
         rprint(f"Request from the user: [bold]\"{user_prompt}\"[/bold]")
+        rprint(f"Tools: [bold]{", ".join(agent.tools.toolset.keys())}[/bold]")
         rprint("[bold red]Press Ctrl+C to stop iteration at any step.[/bold red]")
 
         async for event in agent.process_user_request(user_prompt):

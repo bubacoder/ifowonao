@@ -67,6 +67,13 @@ You are a Linux command-line assistant tasked with running and managing Linux sh
      Example:
        {"name": "write_file", "parameters": {"filename": "script.sh", "content": "#!/bin/bash\necho 'Hello'"}}
 
+   - Name: "fetch_webpage" 
+     Purpose: Download a webpage's textual content and convert it to markdown
+     Parameters:
+       url: "URL or the webpage"
+     Example:
+       {"name": "fetch_webpage", "parameters": {"url": "https://aider.chat/docs/install.html"}}
+
    - Name: "task_complete"
      Purpose: Finalize successful task
      Parameters:
