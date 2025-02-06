@@ -1,0 +1,172 @@
+body {
+    font-family: 'Courier New', monospace;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f5f7;
+}
+
+h3 {
+    margin-top: 0px;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    margin-bottom: 5px;
+}
+
+input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+#app {
+    max-width: 100%;
+    // margin: 10px;
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.chat-box {
+    border: 1px solid #dcdcdc;
+    border-radius: 4px;
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    overflow: auto;
+    white-space: pre-wrap; // Preserves white spaces and wraps text
+
+    &.prompt {
+        border-left: 4px solid #4caf50;
+    }
+
+    &.ai-response {
+        border-left: 4px solid #002289;
+    }
+
+    &.tool-success {
+        border-left: 4px solid #0082ed;
+    }
+
+    &.info {
+        border-left: 4px solid #4caf50;
+    }
+
+    &.warning {
+        border-left: 4px solid #ffc107;
+    }
+
+    &.error {
+        border-left: 4px solid #f44336;
+    }
+}
+
+.input-prompt {
+    display: flex;
+    flex-direction: column; // Stack elements on mobile for better alignment
+    gap: 10px; // Add spacing between components
+    margin-top: 20px;
+
+    input {
+        flex-grow: 1;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+
+    button {
+        width: 100%; // Make the button responsive to smaller screens
+        padding: 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-align: center;
+
+        &:hover {
+            background-color: #45a049;
+        }
+    }
+}
+
+.prompt-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    button {
+        width: 100%; // Ensure buttons take the full width on smaller screens
+        padding: 10px;
+        text-align: center;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background-color: #f8f9fa;
+        cursor: pointer;
+        transition: background-color 0.3s;
+
+        &:hover {
+            background-color: #e9ecef;
+        }
+    }
+}
+
+@media (min-width: 769px) {
+    .floating-task-list {
+        position: fixed; // Keep it floating
+        top: 20px; // Distance from the top edge
+        right: 10px; // Reduced gap for smaller screens
+        z-index: 1000; // Ensure it's above other elements
+        background-color: #fdffb4;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 16px;
+        width: 90%; // Set a responsive width for smaller screens
+        max-width: 300px; // Prevent it from growing too large
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        overflow-y: auto; // Enable scrolling within the box if content overflows
+        max-height: 80vh; // Prevent it from growing too tall
+    }
+
+    .prompt-examples {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr); // Creates two columns
+        gap: 10px;
+    }
+}
+
+@media (max-width: 768px) {
+    h1 {
+        font-size: 1.5em;
+    }
+
+    #app {
+        padding: 10px; // Reduce padding for smaller screen space
+    }
+
+    .input-prompt {
+        gap: 8px; // Slightly closer spacing for mobile
+    }
+
+    .floating-task-list {
+        background-color: #fdffb4;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        padding: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    #app {
+        padding: 8px; // Further reduce padding for very small screens
+    }
+
+    .prompt-examples button {
+        padding: 8px;
+    }
+}
