@@ -1,56 +1,14 @@
-from typing import Optional, Callable, Dict, Any, Tuple
+from typing import Dict, Any
+from tools_base import ToolsBase, tool
 import tempfile
 import asyncio
 import os
 import re
 
 
-# A decorator for marking methods as tools
-def tool(name: str, formatter_function: Optional[str] = None) -> Callable:
-    def decorator(func: Callable) -> Callable:
-        func._is_tool = True  # Mark the function as a tool
-        func._tool_name = name  # Set the name of the tool
-        func._formatter_function = formatter_function  # Optional formatter function
-        return func
-    return decorator
-
-
-class AgentTools:
+class AgentTools(ToolsBase):
     def __init__(self, tool_timeout_seconds: int = 2 * 60):
-        self.tool_timeout_seconds = tool_timeout_seconds
-        
-        # Dynamically populate the toolset by inspecting annotated methods
-        self.toolset = {}
-
-        for method_name in dir(self):  # Iterate over all attributes of the class
-            method = getattr(self, method_name, None)
-
-            # Filter methods that have the _is_tool attribute
-            if callable(method) and getattr(method, "_is_tool", False):
-                # Look up the formatter function if it's specified as a string
-                if method._formatter_function:
-                    formatter_callable = getattr(self, method._formatter_function, None)
-                    if not callable(formatter_callable):
-                        raise ValueError(
-                            f"Formatter function '{method._formatter_function}' for tool '{method._tool_name}' is not callable or not defined"
-                        )
-                else:
-                    formatter_callable = None
-
-                # Use the `name` as the key and store its metadata
-                self.toolset[method._tool_name] = {
-                    "function": method,
-                    "formatter_function": formatter_callable,
-                }
-
-    def get_by_name(self, name: str) -> Tuple[Optional[Callable], Optional[Callable]]:
-        tool = self.toolset.get(name)
-        if not tool: 
-            return None, None
-
-        function = tool.get("function")
-        formatter_function = tool.get("formatter_function", None)
-        return function, formatter_function
+        super().__init__(tool_timeout_seconds)
 
     @tool(name="read_file")
     async def read_file(self, filename: str) -> str:
@@ -155,3 +113,34 @@ class AgentTools:
         exit_section = f"Exit status: {returncode}"
 
         return output_section + error_section + exit_section
+
+    @tool(name="fetch_webpage")
+    async def fetch_webpage(self, url: str) -> str:
+        """
+        Fetches the content of a webpage and converts it to Markdown format.
+
+        Args:
+            url (str): The URL of the webpage.
+
+        Returns:
+            str: The content of the webpage formatted in Markdown, or an error message if the request fails.
+        """
+        import requests
+        from bs4 import BeautifulSoup
+        from markdownify import markdownify as md
+
+        try:
+            # Fetch the webpage's content
+            response = requests.get(url)
+            response.raise_for_status()  # Raise an exception for HTTP errors
+
+            # Parse the HTML content using BeautifulSoup
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Convert the content to Markdown
+            markdown_content = md(str(soup))
+
+            return markdown_content.strip()
+
+        except requests.exceptions.RequestException as ex:
+            return f"Error: Unable to fetch the content due to: {ex}"
