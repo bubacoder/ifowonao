@@ -49,7 +49,7 @@ class ShellAgent:
         return response_object.get("tool_to_use") if response_object else {}
 
     def get_usage_summary(self) -> str:
-        return self.client.get_usage_summary()
+        return self.client.get_usage_summary() if self.client else None
 
     async def call_tool(self, parameters: Dict[str, Any], function: Callable, formatter_function: Optional[Callable]) -> Dict[str, Any]:
         try:
@@ -63,6 +63,12 @@ class ShellAgent:
         except Exception as ex:
             return self.event(Event.TOOL_ERROR, str(ex))
 
+    def get_system_prompt(self) -> str:
+        with open('agent-system-prompt.md', 'r') as file:
+            system_prompt = file.read()
+        tool_definitions = self.tools.get_tool_definitions()
+        return system_prompt.replace("[[TOOL_LIST]]", tool_definitions)
+
     async def process_user_request(self, user_prompt: str) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Main entry point for processing a user's prompt. Outputs results as events for streaming.
@@ -72,8 +78,8 @@ class ShellAgent:
                 base_url=OPENAI_BASE_URL,
                 api_key=OPENAI_API_KEY,
                 model=OPENAI_MODEL,
-                prompt_filename='agent-system-prompt.md')
-            
+                system_prompt=self.get_system_prompt())
+
             self.client.append_user_message(user_prompt)
 
             while True:
@@ -104,7 +110,7 @@ class ShellAgent:
                     yield self.event(Event.COMPLETED, summary)
                     break
                 else:
-                    (function, formatter_function) = self.tools.get_by_name(tool_name)
+                    (function, formatter_function) = self.tools.get_tool(tool_name)
                     if function:
                         yield await self.call_tool(parameters, function, formatter_function)
                     else:
@@ -128,7 +134,7 @@ async def cli_main(user_prompt: str) -> None:
     try:
         rprint(f"Welcome to Linux shell agent powered by \"{OPENAI_MODEL}\"!")
         rprint(f"Request from the user: [bold]\"{user_prompt}\"[/bold]")
-        rprint(f"Tools: [bold]{", ".join(agent.tools.toolset.keys())}[/bold]")
+        rprint(f"Tools: [bold]{", ".join(agent.tools.get_tool_names())}[/bold]")
         rprint("[bold red]Press Ctrl+C to stop iteration at any step.[/bold red]")
 
         async for event in agent.process_user_request(user_prompt):
@@ -139,7 +145,7 @@ async def cli_main(user_prompt: str) -> None:
                         pprint(event["payload"], expand_all=True)
                     case Event.TOOL_SUCCESS:
                         rprint("\n[bold]=== Tool Output ===[/bold]")
-                        if event["payload"]["returncode"] is not None:
+                        if "returncode" in event["payload"]:
                             print(agent.tools.format_shell_command_result(event["payload"]))
                         else:
                             print(event["payload"])
