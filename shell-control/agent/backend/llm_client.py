@@ -14,16 +14,14 @@ DEFAULT_LOG_DIR = "logs"
 
 
 class LLMClient:
-    def __init__(self, base_url: str, api_key: str, model: str, prompt_filename: str = 'system-prompt.md'):
+    def __init__(self, base_url: str, api_key: str, model: str, system_prompt: str):
         self.model = model
         self.usage = {}
         self.reset_usage()
 
-        with open(prompt_filename, 'r') as file:
-            system_prompt = file.read()
-
         self.messages: list[Dict[str, Union[str, Any]]] = []
-        self.append_message('system', system_prompt)
+        if system_prompt is not None:
+            self.append_message('system', system_prompt)
 
         self.client = OpenAI(base_url=base_url, api_key=api_key)
 

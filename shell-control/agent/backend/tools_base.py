@@ -1,5 +1,5 @@
-from typing import Optional, Callable, Tuple
-
+from typing import Optional, Callable, Tuple, List
+import inspect
 
 # A decorator for marking methods as tools
 def tool(name: str, formatter_function: Optional[str] = None) -> Callable:
@@ -14,10 +14,11 @@ def tool(name: str, formatter_function: Optional[str] = None) -> Callable:
 class ToolsBase:
     def __init__(self, tool_timeout_seconds: int = 2 * 60):
         self.tool_timeout_seconds = tool_timeout_seconds
-        
-        # Dynamically populate the toolset by inspecting annotated methods
         self.toolset = {}
+        self.fill_toolset()
 
+    def fill_toolset(self):
+        # Dynamically populate the toolset by inspecting annotated methods
         for method_name in dir(self):  # Iterate over all attributes of the class
             method = getattr(self, method_name, None)
 
@@ -33,13 +34,18 @@ class ToolsBase:
                 else:
                     formatter_callable = None
 
+                docstring = inspect.getdoc(method)
+                if not docstring:
+                    raise ValueError(f"No docstring found for tool '{method._tool_name}'")
+
                 # Use the `name` as the key and store its metadata
                 self.toolset[method._tool_name] = {
                     "function": method,
                     "formatter_function": formatter_callable,
+                    "docstring": docstring
                 }
 
-    def get_by_name(self, name: str) -> Tuple[Optional[Callable], Optional[Callable]]:
+    def get_tool(self, name: str) -> Tuple[Optional[Callable], Optional[Callable]]:
         tool = self.toolset.get(name)
         if not tool: 
             return None, None
@@ -47,3 +53,18 @@ class ToolsBase:
         function = tool.get("function")
         formatter_function = tool.get("formatter_function", None)
         return function, formatter_function
+
+    def get_tool_names(self) -> List[str]:
+        return self.toolset.keys()
+
+    def get_tool_definitions(self) -> str:
+        definitions: str = ""
+        for tool_name in self.toolset:
+            tool = self.toolset[tool_name]
+            definitions += f"   - Name: \"{tool_name}\"\n"
+            docstring = tool["docstring"]
+            lines = docstring.split("\n")
+            for line in lines:
+                definitions += f"     {line}\n"
+            definitions += "\n"
+        return definitions.rstrip()

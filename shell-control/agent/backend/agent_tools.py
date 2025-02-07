@@ -12,6 +12,13 @@ class AgentTools(ToolsBase):
 
     @tool(name="read_file")
     async def read_file(self, filename: str) -> str:
+        """
+        Purpose: Read file contents
+        Parameters:
+          filename: "full path to file"
+        Example:
+          {"name": "read_file", "parameters": {"filename": "/var/log/syslog"}}
+        """
         if not filename:
             raise Exception("Missing filename parameter for read_file")
 
@@ -24,6 +31,14 @@ class AgentTools(ToolsBase):
 
     @tool(name="write_file")
     async def write_file(self, filename: str, content: str = "") -> str:
+        """
+        Purpose: Create/modify files
+        Parameters:
+          filename: "full path",
+          content: "text content"
+        Example:
+          {"name": "write_file", "parameters": {"filename": "script.sh", "content": "#!/bin/bash\\necho 'Hello'"}}
+        """
         if not filename:
             raise Exception("Missing filename parameter for write_file")
 
@@ -40,6 +55,13 @@ class AgentTools(ToolsBase):
 
     @tool(name="execute_shell_command", formatter_function="format_shell_command_result")
     async def execute_shell_command(self, command: str) -> Dict[str, Any]:
+        """
+        Purpose: Run bash commands
+        Parameters: 
+          command: "exact bash command to execute"
+        Example:
+          {"name": "execute_shell_command", "parameters": {"command": "ls -l /etc"}}
+        """
         if not command:
             raise Exception("Missing command parameter for execute_shell_command")
 
@@ -124,6 +146,9 @@ class AgentTools(ToolsBase):
 
         Returns:
             str: The content of the webpage formatted in Markdown, or an error message if the request fails.
+
+        Example:
+            {"name": "fetch_webpage", "parameters": {"url": "https://aider.chat/docs/install.html"}}
         """
         import requests
         from bs4 import BeautifulSoup
