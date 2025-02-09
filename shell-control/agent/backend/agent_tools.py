@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from tools_base import ToolsBase, tool
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
-import requests
+import aiohttp
 import tempfile
 import asyncio
 import os
@@ -160,19 +160,20 @@ class AgentTools(ToolsBase):
             {"name": "fetch_webpage", "parameters": {"url": "https://aider.chat/docs/install.html"}}
         """
         try:
-            # Fetch the webpage's content
-            response = requests.get(url)
-            response.raise_for_status()  # Raise an exception for HTTP errors
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    response.raise_for_status()  # Raise an exception for HTTP errors
+                    html_content = await response.text()
 
             # Parse the HTML content using BeautifulSoup
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(html_content, 'html.parser')
 
             # Convert the content to Markdown
             markdown_content = md(str(soup))
 
             return markdown_content.strip()
 
-        except requests.exceptions.RequestException as ex:
+        except (aiohttp.ClientError, aiohttp.ClientResponseError) as ex:
             return f"Error: Unable to fetch the content due to: {ex}"
 
     @tool(name="develop_code", formatter_function="format_shell_command_result")
