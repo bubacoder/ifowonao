@@ -1,5 +1,8 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from tools_base import ToolsBase, tool
+from bs4 import BeautifulSoup
+from markdownify import markdownify as md
+import requests
 import tempfile
 import asyncio
 import os
@@ -7,8 +10,9 @@ import re
 
 
 class AgentTools(ToolsBase):
-    def __init__(self, tool_timeout_seconds: int = 2 * 60):
-        super().__init__(tool_timeout_seconds)
+    def __init__(self, settings: Optional[dict] = None):
+        if settings is None: settings = {}
+        super().__init__(settings)
 
     @tool(name="read_file")
     async def read_file(self, filename: str) -> str:
@@ -57,7 +61,7 @@ class AgentTools(ToolsBase):
     async def execute_shell_command(self, command: str) -> Dict[str, Any]:
         """
         Purpose: Run bash commands
-        Parameters: 
+        Parameters:
           command: "exact bash command to execute"
         Example:
           {"name": "execute_shell_command", "parameters": {"command": "ls -l /etc"}}
@@ -67,6 +71,7 @@ class AgentTools(ToolsBase):
 
         try:
             additional_error = None
+            process_timeout = self.settings.get("shell_timeout_seconds", 2 * 60)
 
             with tempfile.NamedTemporaryFile(suffix=".sh", delete=False) as temp_file:
                 script_filename = temp_file.name
@@ -82,14 +87,18 @@ class AgentTools(ToolsBase):
 
             try:
                 # Wait for the process to complete with a timeout
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.tool_timeout_seconds)
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=process_timeout
+                )
+
                 # Collect output and error
                 output = stdout.decode().strip()
                 error = stderr.decode().strip()
             except asyncio.TimeoutError:
                 process.kill()  # Kill the process if it exceeds the timeout
                 await process.wait()  # Wait for the process to clean up after being killed
-                additional_error = f"Error: The command execution exceeded the timeout of {self.tool_timeout_seconds} seconds and was killed."
+                additional_error = f"Error: The command execution exceeded the timeout of {process_timeout} seconds and was killed."
                 stdout, stderr = "", ""  # Handle case where output is absent due to timeout
             finally:
                 # Delete the temporary script file
@@ -150,10 +159,6 @@ class AgentTools(ToolsBase):
         Example:
             {"name": "fetch_webpage", "parameters": {"url": "https://aider.chat/docs/install.html"}}
         """
-        import requests
-        from bs4 import BeautifulSoup
-        from markdownify import markdownify as md
-
         try:
             # Fetch the webpage's content
             response = requests.get(url)
@@ -161,7 +166,7 @@ class AgentTools(ToolsBase):
 
             # Parse the HTML content using BeautifulSoup
             soup = BeautifulSoup(response.text, 'html.parser')
-            
+
             # Convert the content to Markdown
             markdown_content = md(str(soup))
 
@@ -169,3 +174,30 @@ class AgentTools(ToolsBase):
 
         except requests.exceptions.RequestException as ex:
             return f"Error: Unable to fetch the content due to: {ex}"
+
+    @tool(name="develop_code", formatter_function="format_shell_command_result")
+    async def develop_code(self, development_task: str, filename: str) -> Dict[str, Any]:
+        """
+        Purpose: Develop new or change existing program code (python, golang or anything else)
+        Parameters:
+          development_task: "a few sentence long description of the programming task to perform"
+          filename: "name the new or existing file. multiple filenames and wildcards (e.g. *.py) can be also used is the application spans multiple files"
+        Example:
+          {"name": "develop_code", "parameters": {"development_task": "Add docstrings to all functions and create unit tests. Use a well-established unit-testing framework.", "filename": "myapp.py"}}
+        """
+        coder_model = self.settings.get("coder_model")
+        openai_api_base = self.settings.get("openai_base_url")
+        openai_api_key = self.settings.get("openai_api_key")
+
+        command = "aider --no-auto-commits --no-git --no-check-update --no-pretty --no-analytics --yes-always"
+
+        if coder_model:
+            command += f" --model {coder_model}"
+        if openai_api_base:
+            command += f" --openai-api-base {openai_api_base}"
+        if openai_api_key:
+            command += f" --openai-api-key {openai_api_key}"
+
+        command += f" --message \"{development_task}\" {filename}"
+
+        return await self.execute_shell_command(command)

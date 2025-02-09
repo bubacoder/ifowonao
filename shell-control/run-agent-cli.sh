@@ -10,7 +10,7 @@ if [ ! -f "${ENV_FILE}" ]; then
 fi
 
 build() {
-    docker build -q --target python-base --tag ${IMAGE} --file agent/Dockerfile ./agent
+    docker build -q --target python-base-tools --tag ${IMAGE} --file agent/Dockerfile ./agent
 }
 
 prepare_workdir() {

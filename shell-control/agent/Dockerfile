@@ -12,7 +12,7 @@ RUN npm run build
 
 
 # --- Base with dependencies installed ---
-FROM python:3.13-bookworm AS python-base
+FROM python:3.12-bookworm AS python-base
 
 WORKDIR /work
 
@@ -25,8 +25,18 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 
+# --- Base with dependencies and tools installed ---
+FROM python-base AS python-base-tools
+
+# Install Aider
+ENV PATH="/root/.local/bin:$PATH" 
+RUN pip install --no-cache-dir aider-install && \
+    aider-install && \
+    aider --version
+
+
 # --- Backend (FastAPI) ---
-FROM python-base AS agent
+FROM python-base-tools AS agent
 
 # Copy backend files
 COPY backend/*.py backend/*.md ./

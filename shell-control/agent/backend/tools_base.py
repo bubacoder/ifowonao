@@ -12,8 +12,8 @@ def tool(name: str, formatter_function: Optional[str] = None) -> Callable:
 
 
 class ToolsBase:
-    def __init__(self, tool_timeout_seconds: int = 2 * 60):
-        self.tool_timeout_seconds = tool_timeout_seconds
+    def __init__(self, settings: Optional[dict] = None):
+        self.settings = settings if settings is not None else {}
         self.toolset = {}
         self.fill_toolset()
 

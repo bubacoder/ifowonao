@@ -16,7 +16,8 @@ import os
 # Global Constants
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL')
+AGENT_MODEL = os.getenv('AGENT_MODEL')
+CODER_MODEL = os.getenv('CODER_MODEL', AGENT_MODEL)
 DEBUG = os.getenv('DEBUG', '0').lower() in ('true', '1')
 ABORT_ON_TOTAL_COST = 0.5
 
@@ -33,10 +34,21 @@ class Event(Enum):
 class ShellAgent:
     def __init__(self):
         self.client: LLMClient = None
-        self.tools: AgentTools = AgentTools()
+        self.tools: AgentTools = AgentTools({
+            "shell_timeout_seconds": 2 * 60,
+            # "openai_api_base": OPENAI_BASE_URL,
+            # "openai_api_key": OPENAI_API_KEY,
+            "coder_model": CODER_MODEL,
+        })
 
     def event(self, event_type: Event, payload: Any) -> Dict[str, Any]:
         return {"type": event_type, "payload": payload}
+
+    def fixup_response(self, response: str) -> str:
+        cleaned_response = response
+        if response.startswith("```json\n") and response.endswith("\n```"):
+            cleaned_response = response[8:-4]
+        return cleaned_response
 
     def get_response(self, response: str) -> Optional[Dict[str, Any]]:
         try:
@@ -64,10 +76,16 @@ class ShellAgent:
             return self.event(Event.TOOL_ERROR, str(ex))
 
     def get_system_prompt(self) -> str:
-        with open('agent-system-prompt.md', 'r') as file:
-            system_prompt = file.read()
-        tool_definitions = self.tools.get_tool_definitions()
-        return system_prompt.replace("[[TOOL_LIST]]", tool_definitions)
+        try:
+            prompt_filename = "agent-system-prompt.md"
+            with open(prompt_filename, 'r') as file:
+                system_prompt = file.read()
+            tool_definitions = self.tools.get_tool_definitions()
+            return system_prompt.replace("[[TOOL_LIST]]", tool_definitions)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"System prompt file '{prompt_filename}' not found") from e
+        except IOError as e:
+            raise IOError(f"Error reading system prompt file '{prompt_filename}': {str(e)}") from e
 
     async def process_user_request(self, user_prompt: str) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -77,14 +95,14 @@ class ShellAgent:
             self.client = LLMClient(
                 base_url=OPENAI_BASE_URL,
                 api_key=OPENAI_API_KEY,
-                model=OPENAI_MODEL,
+                model=AGENT_MODEL,
                 system_prompt=self.get_system_prompt())
 
             self.client.append_user_message(user_prompt)
 
             while True:
                 response_text = self.client.query()
-
+                response_text = self.fixup_response(response_text)
                 response_object = self.get_response(response_text)
                 if response_object:
                     yield self.event(Event.AI_RESPONSE, response_object)
@@ -129,47 +147,51 @@ class ShellAgent:
             yield self.event(Event.ABORT, exception_text)
 
 
+def print_event(event: Dict[str, Any], agent: ShellAgent) -> None:
+    if not event.get("type"):
+        rprint(f"\n[bold]==> Unable to parse event: {event}")
+        return
+        
+    match event["type"]:
+        case Event.AI_RESPONSE:
+            rprint("\n[bold]=== AI Response ===[/bold]")
+            pprint(event["payload"], expand_all=True)
+        case Event.TOOL_SUCCESS:
+            rprint("\n[bold]=== Tool Output ===[/bold]")
+            payload = event["payload"]
+            if isinstance(payload, dict) and "returncode" in payload:
+                print(agent.tools.format_shell_command_result(payload))
+            else:
+                print(payload)
+        case Event.TOOL_ERROR:
+            rprint("\n[bold]=== Tool Output - ERROR ===[/bold]")
+            print(event["payload"])
+        case Event.INFO:
+            rprint(f"\n[bold]==> {event['payload']}")
+        case Event.WARN:
+            rprint(f"\n[bold]==> WARNING: {event['payload']}")
+        case Event.ABORT:
+            rprint(f"\n[bold]==> ERROR: {event['payload']}")
+        case Event.COMPLETED:
+            rprint("\n[bold]==> The AI has completed the task. Exiting.")
+        case _:
+            rprint(f"\n[bold]==> WARNING: Unhandled event: {event}")
+
+
 async def cli_main(user_prompt: str) -> None:
     agent = ShellAgent()
     try:
-        rprint(f"Welcome to Linux shell agent powered by \"{OPENAI_MODEL}\"!")
+        rprint(f"Welcome to Linux shell agent powered by \"{AGENT_MODEL}\"!")
         rprint(f"Request from the user: [bold]\"{user_prompt}\"[/bold]")
         rprint(f"Tools: [bold]{", ".join(agent.tools.get_tool_names())}[/bold]")
         rprint("[bold red]Press Ctrl+C to stop iteration at any step.[/bold red]")
 
         async for event in agent.process_user_request(user_prompt):
-            if event["type"]:
-                match event["type"]:
-                    case Event.AI_RESPONSE:
-                        rprint("\n[bold]=== AI Response ===[/bold]")
-                        pprint(event["payload"], expand_all=True)
-                    case Event.TOOL_SUCCESS:
-                        rprint("\n[bold]=== Tool Output ===[/bold]")
-                        if "returncode" in event["payload"]:
-                            print(agent.tools.format_shell_command_result(event["payload"]))
-                        else:
-                            print(event["payload"])
-                    case Event.TOOL_ERROR:
-                        rprint("\n[bold]=== Tool Output - ERROR ===[/bold]")
-                        print(event["payload"])
-                    case Event.INFO:
-                        rprint(f"\n[bold]==> {event['payload']}")
-                    case Event.WARN:
-                        rprint(f"\n[bold]==> WARNING: {event['payload']}")
-                    case Event.ABORT:
-                        rprint(f"\n[bold]==> ERROR: {event['payload']}")
-                    case Event.COMPLETED:
-                        rprint("\n[bold]==> The AI has completed the task. Exiting.")
-                    case _:
-                        rprint(f"\n[bold]==> WARNING: Unhandled event: {event}")
-            else:
-                rprint(f"\n[bold]==> Unable to parse event: {event}")
-
+            print_event(event, agent)
             sys.stdout.flush()
 
     except KeyboardInterrupt:
         rprint("\n[bold red]User interrupted the program. Exiting...[/bold red]")
-
     except Exception as ex:
         rprint(f"\n[bold red]Exception: {str(ex)}[/bold red]")
 
