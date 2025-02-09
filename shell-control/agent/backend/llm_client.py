@@ -7,14 +7,14 @@ import json
 # Cost/million tokens in USD
 INPUT_COST_PER_MILLION = 0.4
 OUTPUT_COST_PER_MILLION = 0.4
-NATIVE_CURRENCY = "HUF"
-NATIVE_CURRENCY_PER_USD = 404
+ADDITIONAL_CURRENCY = "HUF"
+ADDITIONAL_CURRENCY_PER_USD = 404
 
 DEFAULT_LOG_DIR = "logs"
 
 
 class LLMClient:
-    def __init__(self, base_url: str, api_key: str, model: str, system_prompt: str):
+    def __init__(self, base_url: str, api_key: str, model: str, system_prompt: Optional[str]):
         self.model = model
         self.usage = {}
         self.reset_usage()
@@ -47,7 +47,7 @@ class LLMClient:
         self.usage["prompt_cost"] = self.usage["prompt_tokens"] / 1_000_000 * INPUT_COST_PER_MILLION
         self.usage["completion_cost"] = self.usage["completion_tokens"] / 1_000_000 * OUTPUT_COST_PER_MILLION
         self.usage["total_cost"] = self.usage["prompt_cost"] + self.usage["completion_cost"]
-        self.usage["total_cost_native"] = self.usage["total_cost"] * NATIVE_CURRENCY_PER_USD
+        self.usage["total_cost_native"] = self.usage["total_cost"] * ADDITIONAL_CURRENCY_PER_USD
 
     def reset_usage(self):
         self.usage = {
@@ -63,7 +63,7 @@ class LLMClient:
         return (
             f"Tokens: {self.usage['prompt_tokens']} sent + {self.usage['completion_tokens']} received = "
             f"{self.usage['prompt_tokens'] + self.usage['completion_tokens']} total\n"
-            f"Total cost: USD {self.usage['total_cost']:.4f} / {NATIVE_CURRENCY} {self.usage['total_cost_native']:.4f}"
+            f"Total cost: USD {self.usage['total_cost']:.4f} / {ADDITIONAL_CURRENCY} {self.usage['total_cost_native']:.4f}"
         )
 
     def get_total_cost(self) -> float:
