@@ -81,11 +81,11 @@ class LLMClient:
         # Ensure log directory exists
         log_path = pathlib.Path(log_dir)
         log_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Create filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = log_path / f"conversation_{timestamp}.json"
-        
+
         # Prepare log data
         log_data = {
             "timestamp": datetime.now().isoformat(),
@@ -95,9 +95,9 @@ class LLMClient:
             "messages": self.messages,
             "usage": self.usage,
         }
-        
+
         # Write to file with nice formatting
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(log_data, f, indent=2, ensure_ascii=False)
-        
+
         return str(filename)

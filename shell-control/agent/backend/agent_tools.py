@@ -11,7 +11,8 @@ import re
 
 class AgentTools(ToolsBase):
     def __init__(self, settings: Optional[dict] = None):
-        if settings is None: settings = {}
+        if settings is None:
+            settings = {}
         super().__init__(settings)
 
     @tool(name="read_file")

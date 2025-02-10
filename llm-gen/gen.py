@@ -132,8 +132,10 @@ class LLMTextProcessor(object):
         params.setdefault('chunking', 'disabled')
 
         # Override model if given
-        if model_arg: params['model'] = model_arg
-        if temperature_arg: params['temperature'] = float(temperature_arg)
+        if model_arg:
+            params['model'] = model_arg
+        if temperature_arg:
+            params['temperature'] = float(temperature_arg)
 
         logging.debug(f"Prompt parameters: {params}")
         return prompt_template, params
@@ -241,14 +243,17 @@ class LLMTextProcessor(object):
         encoding_name = model_config.get("encoding_name", self.DEFAULT_ENCODING)
         prompt_tokens = self.count_tokens(prompt, encoding_name)
         response_tokens = self.count_tokens(response, encoding_name)
-        logging.debug(f"Prompt: {len(prompt)} chars, {prompt_tokens} tokens ({encoding_name} encoding); Response: {len(response)} chars, {response_tokens} tokens; sum: {len(prompt) + len(response)} chars\n---------")
+        stats = f"Prompt: {len(prompt)} chars, {prompt_tokens} tokens ({encoding_name} encoding); "
+        stats += f"Response: {len(response)} chars, {response_tokens} tokens; sum: {len(prompt) + len(response)} chars\n---------"
+        logging.debug(stats)
 
     def get_model_config(self, params: Dict) -> Dict:
         """Gets the model configuration based on parameters and configuration."""
         if 'model' not in params:
             model_type = params['model_type']
             model_types_config = self.config['model_types']
-            params['model'] = model_types_config[model_type]['models'][0]  # TODO first model is used
+            # TODO first model is used
+            params['model'] = model_types_config[model_type]['models'][0]
 
         selected_model_name = params['model']
         selected_model_config = self.config['models'][selected_model_name]
@@ -272,14 +277,17 @@ class LLMTextProcessor(object):
 
         input_chunks = self.get_input_chunks(input_text, params['chunking'], model_config["context_length_tokens"])
         self.write_outputs(log_chunks_to, input_chunks)
-        if stop_after == 'chunking': return None
+        if stop_after == 'chunking':
+            return None
 
         prompts = self.get_prompts(prompt_template, input_chunks)
         self.write_outputs(log_prompts_to, prompts)
-        if stop_after == 'templating': return None
+        if stop_after == 'templating':
+            return None
 
         chunk_count = len(prompts)
-        if chunk_count > 0: logging.debug(f"Chunk count: {chunk_count}")
+        if chunk_count > 0:
+            logging.debug(f"Chunk count: {chunk_count}")
 
         responses = []
         for i, prompt in enumerate(prompts, start=1):

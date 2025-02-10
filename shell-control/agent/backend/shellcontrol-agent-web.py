@@ -19,7 +19,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         # Receive user prompt from the frontend
         user_event = await websocket.receive_json()
-        
         if user_event["type"] != "prompt":
             print(f"Unhandled user event type: {user_event["type"]}", flush=True)
             return

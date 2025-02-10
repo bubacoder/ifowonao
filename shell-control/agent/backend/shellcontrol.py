@@ -21,6 +21,7 @@ CODER_MODEL = os.getenv('CODER_MODEL', AGENT_MODEL)
 DEBUG = os.getenv('DEBUG', '0').lower() in ('true', '1')
 ABORT_ON_TOTAL_COST = 0.5
 
+
 class Event(Enum):
     AI_RESPONSE = 1
     TOOL_SUCCESS = 2
@@ -151,7 +152,7 @@ def print_event(event: Dict[str, Any], agent: ShellAgent) -> None:
     if not event.get("type"):
         rprint(f"\n[bold]==> Unable to parse event: {event}")
         return
-        
+
     match event["type"]:
         case Event.AI_RESPONSE:
             rprint("\n[bold]=== AI Response ===[/bold]")

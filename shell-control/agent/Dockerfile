@@ -20,6 +20,7 @@ WORKDIR /work
 COPY backend/docker/apt-conf /etc/apt/apt.conf.d/99quiet
 
 # Install dependencies
+# hadolint ignore=DL3009
 RUN apt-get update
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -29,7 +30,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM python-base AS python-base-tools
 
 # Install Aider
-ENV PATH="/root/.local/bin:$PATH" 
+ENV PATH="/root/.local/bin:$PATH"
+# hadolint ignore=DL3013
 RUN pip install --no-cache-dir aider-install && \
     aider-install && \
     aider --version

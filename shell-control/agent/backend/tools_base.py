@@ -1,6 +1,7 @@
 from typing import Optional, Callable, Tuple, List
 import inspect
 
+
 # A decorator for marking methods as tools
 def tool(name: str, formatter_function: Optional[str] = None) -> Callable:
     def decorator(func: Callable) -> Callable:
@@ -47,7 +48,7 @@ class ToolsBase:
 
     def get_tool(self, name: str) -> Tuple[Optional[Callable], Optional[Callable]]:
         tool = self.toolset.get(name)
-        if not tool: 
+        if not tool:
             return None, None
 
         function = tool.get("function")
