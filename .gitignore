@@ -1,4 +1,8 @@
 __pycache__
+.pytest_cache
+
 work
+logs
 .env.*
 !.env.example
+.aider*
